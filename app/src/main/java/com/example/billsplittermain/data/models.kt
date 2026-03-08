@@ -1,8 +1,10 @@
 package com.example.billsplittermain.data
 
+import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.PrimaryKey
+import androidx.room.Relation
 import java.util.Date
 
 /**
@@ -75,4 +77,75 @@ data class SavedContact(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val name: String,
     val usageCount: Int = 1
+)
+
+/**
+ * Links a BillItem to a Person. splitPercentage allows partial assignments.
+ */
+@Entity(
+    tableName = "item_assignments",
+    foreignKeys = [
+        ForeignKey(
+            entity = BillItem::class,
+            parentColumns = ["id"],
+            childColumns = ["itemId"],
+            onDelete = ForeignKey.CASCADE
+        ),
+        ForeignKey(
+            entity = Person::class,
+            parentColumns = ["id"],
+            childColumns = ["personId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ]
+)
+data class ItemAssignment(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val itemId: Long = 0,
+    val personId: Long = 0,
+    val splitPercentage: Double = 100.0
+)
+
+/**
+ * Room relationship class combining a Bill with all its BillItems.
+ */
+data class BillWithItems(
+    @Embedded val bill: Bill,
+    @Relation(
+        parentColumn = "id",
+        entityColumn = "billId"
+    )
+    val items: List<BillItem>
+)
+
+/**
+ * The calculated split result for one person — what they owe.
+ */
+data class SplitResult(
+    val person: Person,
+    val items: List<BillItem>,
+    val itemsSubtotal: Double,
+    val taxShare: Double,
+    val tipShare: Double,
+    val total: Double
+)
+
+/**
+ * An item detected from OCR scan before it is saved to Room.
+ */
+data class ReceiptItem(
+    val name: String,
+    val price: Double,
+    val quantity: Double = 1.0
+)
+
+/**
+ * Full result returned by the OCR processor after scanning a receipt image.
+ */
+data class OcrResult(
+    val items: List<ReceiptItem>,
+    val subtotal: Double?,
+    val tax: Double?,
+    val tip: Double?,
+    val total: Double?
 )
