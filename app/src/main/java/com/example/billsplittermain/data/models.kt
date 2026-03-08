@@ -44,3 +44,35 @@ data class BillItem(
     val quantity: Int = 1,
     val totalPrice: Double
 )
+
+/**
+ * A person participating in the bill split. isPaid tracks whether they have settled their share.
+ */
+@Entity(
+    tableName = "persons",
+    foreignKeys = [
+        ForeignKey(
+            entity = Bill::class,
+            parentColumns = ["id"],
+            childColumns = ["billId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ]
+)
+data class Person(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val billId: Long = 0,
+    val name: String,
+    val color: Int = 0,
+    val isPaid: Boolean = false
+)
+
+/**
+ * A frequently-used contact saved for quick add in future splits. Ordered by usageCount so most-used appear first.
+ */
+@Entity(tableName = "saved_contacts")
+data class SavedContact(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    val usageCount: Int = 1
+)
