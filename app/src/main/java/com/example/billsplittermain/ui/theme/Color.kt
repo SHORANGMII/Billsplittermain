@@ -25,3 +25,13 @@ val TextDisabled = Color(0xFF64748B)   // dimmed text
 val Error = Color(0xFFEF4444)          // red for errors
 val Success = Color(0xFF22C55E)        // bright green for paid/success
 val Warning = Color(0xFFF59E0B)        // amber for warnings
+
+/**
+ * Each person added to a bill gets a unique color from this list, 
+ * cycling back to start if more than 12 people.
+ */
+val PersonColors = listOf(
+    Color(0xFF6366F1), Color(0xFF10B981), Color(0xFFF59E0B), Color(0xFFEF4444),
+    Color(0xFF8B5CF6), Color(0xFF06B6D4), Color(0xFFEC4899), Color(0xFF84CC16),
+    Color(0xFFF97316), Color(0xFF14B8A6), Color(0xFF3B82F6), Color(0xFFD946EF)
+)
