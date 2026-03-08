@@ -1,3 +1,6 @@
+/**
+ * Root theme composable for the Bill Splitter OCR application.
+ */
 package com.example.billsplittermain.ui.theme
 
 import androidx.compose.material3.MaterialTheme
@@ -5,9 +8,13 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 
 private val DarkColorScheme = darkColorScheme(
+    primary = Primary,
+    secondary = Secondary,
+    error = Error,
     background = Background,
     surface = Surface,
-    surfaceVariant = SurfaceVariant
+    surfaceVariant = SurfaceVariant,
+    onBackground = TextPrimary
 )
 
 @Composable
@@ -16,6 +23,7 @@ fun BillSplitterTheme(
 ) {
     MaterialTheme(
         colorScheme = DarkColorScheme,
+        typography = Typography,
         content = content
     )
 }
