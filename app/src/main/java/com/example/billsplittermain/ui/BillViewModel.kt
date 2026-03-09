@@ -19,6 +19,7 @@ import com.example.billsplittermain.utils.supportedCurrencies
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 /**
  * ViewModel for the Bill Splitter application.
@@ -107,4 +108,101 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
      */
     val savedContacts: StateFlow<List<SavedContact>> = repository.allSavedContacts
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    // ==================== BILL MANAGEMENT ====================
+
+    /**
+     * Resets all bill-related state to start fresh with a new bill.
+     */
+    fun createNewBill(name: String = "") {
+        _currentBill.value = Bill(name = name)
+        _billItems.clear()
+        _persons.clear()
+        _splitResults.value = emptyList()
+        _taxPercentage.value = 0.0
+        _tipPercentage.value = 0.0
+    }
+
+    /**
+     * Loads a bill and its items from the repository and restores the ViewModel state.
+     */
+    fun loadBill(billId: Long) {
+        viewModelScope.launch {
+            _isProcessing.value = true
+            try {
+                val billWithItems = repository.getBillWithItems(billId)
+                billWithItems?.let {
+                    _currentBill.value = it.bill
+                    _billItems.clear()
+                    _billItems.addAll(it.items)
+                    _taxPercentage.value = it.bill.taxPercentage
+                    _tipPercentage.value = it.bill.tipPercentage
+                    // Persons and SplitResults will be handled in subsequent steps
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "Failed to load bill: ${e.message}"
+            } finally {
+                _isProcessing.value = false
+            }
+        }
+    }
+
+    /**
+     * Saves the current bill and its items to the Room database.
+     * @return The ID of the saved bill.
+     */
+    suspend fun saveBill(): Long {
+        val bill = _currentBill.value ?: Bill()
+        val billId = repository.insertBill(bill)
+        val itemsToInsert = _billItems.map { it.copy(billId = billId) }
+        repository.insertItems(itemsToInsert)
+        return billId
+    }
+
+    /**
+     * Deletes a specific bill from the repository.
+     */
+    fun deleteBill(bill: Bill) {
+        viewModelScope.launch {
+            repository.deleteBill(bill)
+        }
+    }
+
+    /**
+     * Adds a new item to the current bill list with a temporary negative ID.
+     */
+    fun addItem(name: String, price: Double, quantity: Int = 1) {
+        val tempId = -(System.currentTimeMillis() % 1000000)
+        _billItems.add(
+            BillItem(
+                id = tempId,
+                name = name,
+                price = price,
+                quantity = quantity,
+                totalPrice = price * quantity
+            )
+        )
+    }
+
+    /**
+     * Removes an item from the current bill list by its ID.
+     */
+    fun removeItem(itemId: Long) {
+        _billItems.removeAll { it.id == itemId }
+    }
+
+    /**
+     * Updates an existing item in the current bill list.
+     */
+    fun updateItem(itemId: Long, name: String, price: Double, quantity: Int) {
+        val index = _billItems.indexOfFirst { it.id == itemId }
+        if (index != -1) {
+            _billItems[index] = _billItems[index].copy(
+                name = name,
+                price = price,
+                quantity = quantity,
+                totalPrice = price * quantity
+            )
+        }
+    }
 }
