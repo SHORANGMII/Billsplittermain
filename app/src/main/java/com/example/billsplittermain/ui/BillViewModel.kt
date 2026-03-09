@@ -12,9 +12,11 @@ import com.example.billsplittermain.data.Bill
 import com.example.billsplittermain.data.BillItem
 import com.example.billsplittermain.data.BillRepository
 import com.example.billsplittermain.data.BillWithItems
+import com.example.billsplittermain.data.ItemAssignment
 import com.example.billsplittermain.data.Person
 import com.example.billsplittermain.data.SavedContact
 import com.example.billsplittermain.data.SplitResult
+import com.example.billsplittermain.utils.getPersonColorHex
 import com.example.billsplittermain.utils.supportedCurrencies
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -109,6 +111,11 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
     val savedContacts: StateFlow<List<SavedContact>> = repository.allSavedContacts
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
+    /**
+     * Internal list of item assignments for the current bill.
+     */
+    private val _itemAssignments = mutableStateListOf<ItemAssignment>()
+
     // ==================== BILL MANAGEMENT ====================
 
     /**
@@ -118,6 +125,7 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
         _currentBill.value = Bill(name = name)
         _billItems.clear()
         _persons.clear()
+        _itemAssignments.clear()
         _splitResults.value = emptyList()
         _taxPercentage.value = 0.0
         _tipPercentage.value = 0.0
@@ -137,7 +145,18 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
                     _billItems.addAll(it.items)
                     _taxPercentage.value = it.bill.taxPercentage
                     _tipPercentage.value = it.bill.tipPercentage
-                    // Persons and SplitResults will be handled in subsequent steps
+                    
+                    // Load persons and assignments
+                    val personsFromDb = repository.getPersonsForBill(billId)
+                    _persons.clear()
+                    _persons.addAll(personsFromDb)
+                    
+                    _itemAssignments.clear()
+                    personsFromDb.forEach { person ->
+                        _itemAssignments.addAll(repository.getAssignmentsForPerson(person.id))
+                    }
+                    
+                    calculateSplit()
                 }
             } catch (e: Exception) {
                 _errorMessage.value = "Failed to load bill: ${e.message}"
@@ -189,6 +208,7 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
      */
     fun removeItem(itemId: Long) {
         _billItems.removeAll { it.id == itemId }
+        _itemAssignments.removeAll { it.itemId == itemId }
     }
 
     /**
@@ -204,5 +224,90 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
                 totalPrice = price * quantity
             )
         }
+    }
+
+    // ==================== PERSON MANAGEMENT ====================
+
+    /**
+     * Adds a person to the bill.
+     * If [contactId] is provided, increments its usage; otherwise, saves the name as a new contact.
+     */
+    fun addPerson(name: String, contactId: Long? = null) {
+        val tempId = -(System.currentTimeMillis() % 1000000)
+        val person = Person(
+            id = tempId,
+            name = name,
+            color = getPersonColorHex(_persons.size)
+        )
+        _persons.add(person)
+        
+        viewModelScope.launch {
+            if (contactId != null) {
+                repository.incrementContactUsage(contactId)
+            } else {
+                repository.saveContact(name)
+            }
+        }
+    }
+
+    /**
+     * Removes a person from the current bill participation.
+     */
+    fun removePerson(personId: Long) {
+        _persons.removeAll { it.id == personId }
+        _itemAssignments.removeAll { it.personId == personId }
+    }
+
+    /**
+     * Toggles the paid status of a person. Updates both local state and database.
+     */
+    fun togglePersonPaid(personId: Long, isPaid: Boolean) {
+        val index = _persons.indexOfFirst { it.id == personId }
+        if (index != -1) {
+            _persons[index] = _persons[index].copy(isPaid = isPaid)
+            
+            // Refresh split results locally to show "Paid" checkmarks
+            calculateSplit()
+            
+            if (personId > 0) {
+                viewModelScope.launch {
+                    repository.updatePersonPaidStatus(personId, isPaid)
+                }
+            }
+        }
+    }
+
+    /**
+     * Assigns or unassigns an item to a specific person.
+     */
+    fun toggleItemAssignment(itemId: Long, personId: Long) {
+        val existing = _itemAssignments.find { it.itemId == itemId && it.personId == personId }
+        if (existing != null) {
+            _itemAssignments.remove(existing)
+        } else {
+            _itemAssignments.add(ItemAssignment(itemId = itemId, personId = personId))
+        }
+    }
+
+    /**
+     * Returns a list of person IDs currently assigned to a specific item.
+     */
+    fun getAssignedPersonsForItem(itemId: Long): List<Long> {
+        return _itemAssignments.filter { it.itemId == itemId }.map { it.personId }
+    }
+
+    /**
+     * Filters the bill items to return only those assigned to a specific person.
+     */
+    fun getItemsForPerson(personId: Long): List<BillItem> {
+        val itemIds = _itemAssignments.filter { it.personId == personId }.map { it.itemId }
+        return _billItems.filter { it.id in itemIds }
+    }
+
+    /**
+     * Placeholder for the split calculation logic to be implemented in Step 21.
+     */
+    private fun calculateSplit() {
+        // Implementation logic for calculations
     }
 }
