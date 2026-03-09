@@ -1,15 +1,24 @@
 package com.example.billsplittermain.ui
 
 import android.app.Application
+import android.content.Context
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.example.billsplittermain.BillSplitterApplication
 import com.example.billsplittermain.data.Bill
 import com.example.billsplittermain.data.BillItem
+import com.example.billsplittermain.data.BillRepository
+import com.example.billsplittermain.data.BillWithItems
 import com.example.billsplittermain.data.Person
+import com.example.billsplittermain.data.SavedContact
 import com.example.billsplittermain.data.SplitResult
 import com.example.billsplittermain.utils.supportedCurrencies
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.stateIn
 
 /**
  * ViewModel for the Bill Splitter application.
@@ -23,6 +32,9 @@ import com.example.billsplittermain.utils.supportedCurrencies
  * - Offline-first architecture with background synchronization.
  */
 class BillViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val repository: BillRepository = (application as BillSplitterApplication).repository
+    private val sharedPrefs = application.getSharedPreferences("bill_splitter_prefs", Context.MODE_PRIVATE)
 
     /**
      * Tracks the current bill being edited or viewed.
@@ -83,4 +95,16 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
      */
     private val _isForcedOffline = mutableStateOf(false)
     val isForcedOffline: State<Boolean> = _isForcedOffline
+
+    /**
+     * Live list of all saved bills with their items. Observed by HistoryScreen.
+     */
+    val billHistory: StateFlow<List<BillWithItems>> = repository.allBillsWithItems
+        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    /**
+     * Live list of saved contacts ordered by usage. Observed by SplitScreen for quick-add chips.
+     */
+    val savedContacts: StateFlow<List<SavedContact>> = repository.allSavedContacts
+        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 }
