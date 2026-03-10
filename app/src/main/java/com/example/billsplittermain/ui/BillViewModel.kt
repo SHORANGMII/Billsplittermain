@@ -16,6 +16,7 @@ import com.example.billsplittermain.data.ItemAssignment
 import com.example.billsplittermain.data.Person
 import com.example.billsplittermain.data.SavedContact
 import com.example.billsplittermain.data.SplitResult
+import com.example.billsplittermain.utils.CurrencyUtils
 import com.example.billsplittermain.utils.getPersonColorHex
 import com.example.billsplittermain.utils.supportedCurrencies
 import kotlinx.coroutines.flow.SharingStarted
@@ -88,6 +89,12 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
     val tipPercentage: State<Double> = _tipPercentage
 
     /**
+     * Tracks the global tip amount applied to the bill.
+     */
+    private val _tipAmount = mutableStateOf(0.0)
+    val tipAmount: State<Double> = _tipAmount
+
+    /**
      * The currently selected currency for the bill.
      */
     private val _selectedCurrency = mutableStateOf(supportedCurrencies.first())
@@ -129,6 +136,7 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
         _splitResults.value = emptyList()
         _taxPercentage.value = 0.0
         _tipPercentage.value = 0.0
+        _tipAmount.value = 0.0
     }
 
     /**
@@ -145,6 +153,7 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
                     _billItems.addAll(it.items)
                     _taxPercentage.value = it.bill.taxPercentage
                     _tipPercentage.value = it.bill.tipPercentage
+                    _tipAmount.value = it.bill.tipAmount
                     
                     // Load persons and assignments
                     val personsFromDb = repository.getPersonsForBill(billId)
@@ -171,6 +180,7 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
      * @return The ID of the saved bill.
      */
     suspend fun saveBill(): Long {
+        recalculateTotals()
         val bill = _currentBill.value ?: Bill()
         val billId = repository.insertBill(bill)
         val itemsToInsert = _billItems.map { it.copy(billId = billId) }
@@ -201,6 +211,7 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
                 totalPrice = price * quantity
             )
         )
+        recalculateTotals()
     }
 
     /**
@@ -209,6 +220,7 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
     fun removeItem(itemId: Long) {
         _billItems.removeAll { it.id == itemId }
         _itemAssignments.removeAll { it.itemId == itemId }
+        recalculateTotals()
     }
 
     /**
@@ -223,6 +235,7 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
                 quantity = quantity,
                 totalPrice = price * quantity
             )
+            recalculateTotals()
         }
     }
 
@@ -248,6 +261,7 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
                 repository.saveContact(name)
             }
         }
+        calculateSplit()
     }
 
     /**
@@ -256,6 +270,7 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
     fun removePerson(personId: Long) {
         _persons.removeAll { it.id == personId }
         _itemAssignments.removeAll { it.personId == personId }
+        calculateSplit()
     }
 
     /**
@@ -287,6 +302,7 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             _itemAssignments.add(ItemAssignment(itemId = itemId, personId = personId))
         }
+        calculateSplit()
     }
 
     /**
@@ -304,10 +320,111 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
         return _billItems.filter { it.id in itemIds }
     }
 
+    // ==================== SPLIT CALCULATION ====================
+
     /**
-     * Placeholder for the split calculation logic to be implemented in Step 21.
+     * Updates the tax percentage and triggers a total recalculation.
      */
-    private fun calculateSplit() {
-        // Implementation logic for calculations
+    fun setTaxPercentage(percentage: Double) {
+        _taxPercentage.value = percentage
+        recalculateTotals()
+    }
+
+    /**
+     * Updates the tip percentage, resets the flat tip amount, and triggers a total recalculation.
+     */
+    fun setTipPercentage(percentage: Double) {
+        _tipPercentage.value = percentage
+        _tipAmount.value = 0.0
+        recalculateTotals()
+    }
+
+    /**
+     * Updates the flat tip amount, resets the tip percentage, and triggers a total recalculation.
+     */
+    fun setTipAmount(amount: Double) {
+        _tipAmount.value = amount
+        _tipPercentage.value = 0.0
+        recalculateTotals()
+    }
+
+    /**
+     * Updates the current bill's financial totals based on the current items and settings.
+     */
+    private fun recalculateTotals() {
+        val subtotal = _billItems.sumOf { it.totalPrice }
+        val taxAmount = subtotal * (_taxPercentage.value / 100.0)
+        val tipAmount = if (_tipPercentage.value > 0) {
+            subtotal * (_tipPercentage.value / 100.0)
+        } else {
+            _tipAmount.value
+        }
+        val total = subtotal + taxAmount + tipAmount
+
+        _currentBill.value = _currentBill.value?.copy(
+            subtotal = subtotal,
+            taxAmount = taxAmount,
+            taxPercentage = _taxPercentage.value,
+            tipAmount = tipAmount,
+            tipPercentage = _tipPercentage.value,
+            total = total
+        )
+        calculateSplit()
+    }
+
+    /**
+     * Calculates the bill split for each participant.
+     * Formula: personSubtotal + (personSubtotal / subtotal) * (tax + tip)
+     */
+    fun calculateSplit() {
+        val bill = _currentBill.value ?: return
+        val subtotal = bill.subtotal
+        if (subtotal == 0.0) {
+            _splitResults.value = emptyList()
+            return
+        }
+
+        _splitResults.value = _persons.map { person ->
+            val itemsForPerson = getItemsForPerson(person.id)
+            val personSubtotal = itemsForPerson.sumOf { item ->
+                // Account for shared items
+                val splitCount = getAssignedPersonsForItem(item.id).size
+                if (splitCount > 0) item.totalPrice / splitCount else 0.0
+            }
+            
+            val shareRatio = personSubtotal / subtotal
+            val personTax = bill.taxAmount * shareRatio
+            val personTip = bill.tipAmount * shareRatio
+            
+            SplitResult(
+                person = person,
+                items = itemsForPerson,
+                itemsSubtotal = personSubtotal,
+                taxShare = personTax,
+                tipShare = personTip,
+                total = personSubtotal + personTax + personTip
+            )
+        }
+    }
+
+    /**
+     * Resets the split by assigning all current bill items to every person participating.
+     */
+    fun splitEqually() {
+        _itemAssignments.clear()
+        _persons.forEach { person ->
+            _billItems.forEach { item ->
+                _itemAssignments.add(ItemAssignment(itemId = item.id, personId = person.id))
+            }
+        }
+        calculateSplit()
+    }
+
+    /**
+     * Returns the grand total converted to the user's selected currency.
+     */
+    fun getConvertedGrandTotal(): Double {
+        val total = _currentBill.value?.total ?: 0.0
+        return CurrencyUtils.convert(total, "USD", _selectedCurrency.value.code)
     }
 }
