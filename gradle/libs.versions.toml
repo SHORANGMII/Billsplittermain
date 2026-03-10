@@ -14,6 +14,8 @@ activity = "1.10.0"
 constraintlayout = "2.2.0"
 room = "2.6.1"
 ksp = "2.1.0-1.0.29"
+mlkitTextRecognition = "16.0.1"
+playServicesCoroutines = "1.10.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -37,6 +39,8 @@ androidx-constraintlayout = { group = "androidx.constraintlayout", name = "const
 androidx-room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
 androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
 androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
+mlkit-text-recognition = { group = "com.google.mlkit", name = "text-recognition", version.ref = "mlkitTextRecognition" }
+kotlinx-coroutines-play-services = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-play-services", version.ref = "playServicesCoroutines" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

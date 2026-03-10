@@ -61,6 +61,10 @@ dependencies {
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
+
+    // ML Kit & Coroutines for Task
+    implementation(libs.mlkit.text.recognition)
+    implementation(libs.kotlinx.coroutines.play.services)
     
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
