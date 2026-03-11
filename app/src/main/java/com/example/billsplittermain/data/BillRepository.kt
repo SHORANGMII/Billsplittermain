@@ -2,7 +2,7 @@ package com.example.billsplittermain.data
 
 import kotlinx.coroutines.flow.Flow
 
-/** Repository layer for Bill Splitter. Delegates all database operations to DAOs. */
+/** Repository layer for Bill Splitter. Delegates all database operations to  DAOs. */
 class BillRepository(private val dao: BillDao) {
 
     val allBills: Flow<List<Bill>> = dao.getAllBills()
