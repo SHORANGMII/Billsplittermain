@@ -1,39 +1,20 @@
 package com.example.billsplittermain
 
-/**
- * Defines all navigation destinations within the Bill Splitter application.
- * Each screen is associated with a unique route string used by the NavController.
- *
- * @property route The unique identifier for the navigation destination.
- */
+/** Navigation routes for Bill Splitter app. */
 sealed class Screen(val route: String) {
-    /**
-     * The initial home screen displaying recent bills and options to start a new split.
-     */
+    object BillList : Screen("bill_list")
+    object CreateBill : Screen("create_bill")
+    data class SplitBill(val billId: Long) : Screen("split_bill/{billId}") {
+        fun createRoute(billId: Long) = "split_bill/$billId"
+    }
+    data class BillDetail(val billId: Long) : Screen("bill_detail/{billId}") {
+        fun createRoute(billId: Long) = "bill_detail/$billId"
+    }
+    
     object Home : Screen("home")
-
-    /**
-     * Screen for scanning a receipt image using OCR.
-     */
     object Scan : Screen("scan")
-
-    /**
-     * Screen for reviewing and editing items extracted from the receipt.
-     */
     object Items : Screen("items")
-
-    /**
-     * Screen for assigning items to participants.
-     */
     object Split : Screen("split")
-
-    /**
-     * Final result screen showing what each person owes and handling payments.
-     */
     object Result : Screen("result")
-
-    /**
-     * Screen showing the history of all completed bill splits.
-     */
     object History : Screen("history")
 }

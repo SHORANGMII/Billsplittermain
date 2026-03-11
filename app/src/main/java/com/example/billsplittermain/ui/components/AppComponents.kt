@@ -1,13 +1,10 @@
-/**
- * Reusable UI components shared across multiple screens.
- */
 package com.example.billsplittermain.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -16,9 +13,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.example.billsplittermain.ui.theme.TextPrimary
 
-/**
- * Full-screen loading overlay shown during OCR processing.
- */
 @Composable
 fun LoadingOverlay(isVisible: Boolean) {
     if (isVisible) {
@@ -33,9 +27,6 @@ fun LoadingOverlay(isVisible: Boolean) {
     }
 }
 
-/**
- * Displays an error message in a dismissable card.
- */
 @Composable
 fun ErrorCard(message: String, onDismiss: () -> Unit) {
     Card(
@@ -56,7 +47,7 @@ fun ErrorCard(message: String, onDismiss: () -> Unit) {
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
-                    imageVector = Icons.Default.Error,
+                    imageVector = Icons.Default.Warning,
                     contentDescription = "Error",
                     tint = MaterialTheme.colorScheme.error
                 )
@@ -76,9 +67,6 @@ fun ErrorCard(message: String, onDismiss: () -> Unit) {
     }
 }
 
-/**
- * Section title text used throughout the app.
- */
 @Composable
 fun SectionHeader(title: String, modifier: Modifier = Modifier) {
     Text(

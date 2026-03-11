@@ -9,26 +9,12 @@ import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import kotlinx.coroutines.tasks.await
 
-/**
- * Processor for extracting bill information from receipt images using Google ML Kit OCR.
- *
- * Strategy:
- * 1. Uses ML Kit to recognize text blocks and lines in the image.
- * 2. Iterates through lines and uses regular expressions to identify items and their prices.
- * 3. Looks for specific keywords (e.g., "tax", "tip", "subtotal") to extract financial totals.
- * 4. Aggregates all detected items and totals into an [OcrResult].
- */
 class ReceiptOcrProcessor(private val context: Application) {
 
     private val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
     private val lineRegex = Regex("""(.+?)\s+\$?([\d,]+\.?\d{0,2})""")
 
-    /**
-     * Processes a receipt image from the given [Uri] and extracts its contents.
-     *
-     * @param uri The URI of the image to process.
-     * @return An [OcrResult] containing the list of items and extracted totals.
-     */
+    /** Uses ML Kit on-device OCR to recognize text from receipt images. Returns recognized text or empty string on failure. */
     suspend fun processImage(uri: Uri): OcrResult {
         return try {
             val image = InputImage.fromFilePath(context, uri)
@@ -45,7 +31,6 @@ class ReceiptOcrProcessor(private val context: Application) {
                     val lineText = line.text
                     val textLower = lineText.lowercase()
 
-                    // Check for total keywords BEFORE generic item matching
                     val priceMatch = Regex("""\$?([\d,]+\.?\d{0,2})""").find(lineText)
                     val price = priceMatch?.groupValues?.get(1)?.replace(",", "")?.toDoubleOrNull() ?: 0.0
 
@@ -55,7 +40,6 @@ class ReceiptOcrProcessor(private val context: Application) {
                         textLower.contains("subtotal") -> subtotal = price
                         textLower.contains("total") -> if (total == null) total = price
                         else -> {
-                            // Only if it's not a total line, try to match as a generic item
                             val match = lineRegex.find(lineText)
                             if (match != null) {
                                 val name = match.groupValues[1].trim()
@@ -79,9 +63,6 @@ class ReceiptOcrProcessor(private val context: Application) {
         }
     }
 
-    /**
-     * Closes the underlying ML Kit text recognizer to release resources.
-     */
     fun cleanup() {
         recognizer.close()
     }

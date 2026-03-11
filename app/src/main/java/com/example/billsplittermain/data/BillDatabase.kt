@@ -6,9 +6,7 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 
-/**
- * Room database for Bill Splitter. Version 2 adds SavedContact table and isPaid field on Person.
- */
+/** Room database for Bill Splitter OCR. Manages bills and persons tables. */
 @Database(
     entities = [
         Bill::class,
@@ -17,7 +15,7 @@ import androidx.room.TypeConverters
         ItemAssignment::class,
         SavedContact::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -29,22 +27,21 @@ abstract class BillDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: BillDatabase? = null
 
-        /**
-         * Returns the singleton instance of [BillDatabase].
-         * Uses the singleton pattern with a synchronized block to ensure only one instance is created.
-         */
         fun getDatabase(context: Context): BillDatabase {
             return INSTANCE ?: synchronized(this) {
-                val instance = Room.databaseBuilder(
-                    context.applicationContext,
-                    BillDatabase::class.java,
-                    "bill_splitter_database"
-                )
-                    .fallbackToDestructiveMigration()
-                    .build()
-                INSTANCE = instance
-                instance
+                INSTANCE ?: buildDatabase(context).also { INSTANCE = it }
             }
+        }
+
+        private fun buildDatabase(context: Context): BillDatabase {
+            return Room.databaseBuilder(
+                context.applicationContext,
+                BillDatabase::class.java,
+                "bill_splitter_database"
+            )
+                .fallbackToDestructiveMigration()
+                .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
+                .build()
         }
     }
 }

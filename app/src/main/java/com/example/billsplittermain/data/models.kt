@@ -3,13 +3,12 @@ package com.example.billsplittermain.data
 import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.ForeignKey
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import androidx.room.Relation
 import java.util.Date
 
-/**
- * Represents a complete bill stored in Room database.
- */
+/** Represents a complete bill stored in Room database. */
 @Entity(tableName = "bills")
 data class Bill(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -24,9 +23,6 @@ data class Bill(
     val isSynced: Boolean = false
 )
 
-/**
- * A single line item on a bill (e.g. Burger $8.99 x2)
- */
 @Entity(
     tableName = "bill_items",
     foreignKeys = [
@@ -36,7 +32,8 @@ data class Bill(
             childColumns = ["billId"],
             onDelete = ForeignKey.CASCADE
         )
-    ]
+    ],
+    indices = [Index(value = ["billId"])]
 )
 data class BillItem(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -47,9 +44,7 @@ data class BillItem(
     val totalPrice: Double
 )
 
-/**
- * A person participating in the bill split. isPaid tracks whether they have settled their share.
- */
+/** Represents one person in a bill split. */
 @Entity(
     tableName = "persons",
     foreignKeys = [
@@ -59,19 +54,18 @@ data class BillItem(
             childColumns = ["billId"],
             onDelete = ForeignKey.CASCADE
         )
-    ]
+    ],
+    indices = [Index(value = ["billId"])]
 )
 data class Person(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val billId: Long = 0,
     val name: String,
-    val color: Int = 0,
-    val isPaid: Boolean = false
+    val amountOwed: Double = 0.0,
+    val isPaid: Boolean = false,
+    val colorIndex: Int = 0
 )
 
-/**
- * A frequently-used contact saved for quick add in future splits. Ordered by usageCount so most-used appear first.
- */
 @Entity(tableName = "saved_contacts")
 data class SavedContact(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -79,9 +73,6 @@ data class SavedContact(
     val usageCount: Int = 1
 )
 
-/**
- * Links a BillItem to a Person. splitPercentage allows partial assignments.
- */
 @Entity(
     tableName = "item_assignments",
     foreignKeys = [
@@ -97,6 +88,10 @@ data class SavedContact(
             childColumns = ["personId"],
             onDelete = ForeignKey.CASCADE
         )
+    ],
+    indices = [
+        Index(value = ["itemId"]),
+        Index(value = ["personId"])
     ]
 )
 data class ItemAssignment(
@@ -106,9 +101,16 @@ data class ItemAssignment(
     val splitPercentage: Double = 100.0
 )
 
-/**
- * Room relationship class combining a Bill with all its BillItems.
- */
+/** Joins a bill with all its associated persons using Room @Relation. */
+data class BillWithPersons(
+    @Embedded val bill: Bill,
+    @Relation(
+        parentColumn = "id",
+        entityColumn = "billId"
+    )
+    val persons: List<Person>
+)
+
 data class BillWithItems(
     @Embedded val bill: Bill,
     @Relation(
@@ -118,9 +120,6 @@ data class BillWithItems(
     val items: List<BillItem>
 )
 
-/**
- * The calculated split result for one person — what they owe.
- */
 data class SplitResult(
     val person: Person,
     val items: List<BillItem>,
@@ -130,18 +129,12 @@ data class SplitResult(
     val total: Double
 )
 
-/**
- * An item detected from OCR scan before it is saved to Room.
- */
 data class ReceiptItem(
     val name: String,
     val price: Double,
     val quantity: Double = 1.0
 )
 
-/**
- * Full result returned by the OCR processor after scanning a receipt image.
- */
 data class OcrResult(
     val items: List<ReceiptItem>,
     val subtotal: Double?,
