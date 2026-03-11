@@ -55,10 +55,6 @@ class BillRepository(private val dao: BillDao) {
         dao.deletePerson(person)
     }
 
-    suspend fun updatePersonPaidStatus(personId: Long, isPaid: Boolean) {
-        dao.markAsPaid(personId, isPaid)
-    }
-
     suspend fun markPersonAsPaid(personId: Long, paid: Boolean) {
         dao.markAsPaid(personId, paid)
     }
