@@ -17,12 +17,18 @@ import com.example.billsplittermain.utils.formatCurrency
 import com.example.billsplittermain.utils.supportedCurrencies
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+/**
+ * ViewModel for managing bill splitting logic and state.
+ * Supports OCR scanning, multi-currency conversion, split calculation, and offline persistence.
+ */
 class BillViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository: BillRepository by lazy {
@@ -57,17 +63,17 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
     private val _isForcedOffline = mutableStateOf(false)
     val isForcedOffline: State<Boolean> = _isForcedOffline
 
-    private val _billHistory = MutableStateFlow<List<BillWithItems>>(emptyList())
-    val billHistory: StateFlow<List<BillWithItems>> = _billHistory.asStateFlow()
-
-    private val _savedContacts = MutableStateFlow<List<SavedContact>>(emptyList())
-    val savedContacts: StateFlow<List<SavedContact>> = _savedContacts.asStateFlow()
-
     private val _isInitialLoading = MutableStateFlow(true)
     val isInitialLoading: StateFlow<Boolean> = _isInitialLoading.asStateFlow()
 
     private val _itemAssignments = mutableStateListOf<ItemAssignment>()
     val itemAssignments: List<ItemAssignment> = _itemAssignments
+
+    val billHistory: StateFlow<List<BillWithItems>> = repository.allBillsWithItems
+        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    val savedContacts: StateFlow<List<SavedContact>> = repository.allSavedContacts
+        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     private var isInitialized = false
 
@@ -77,15 +83,8 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch(Dispatchers.IO) {
             launch {
-                repository.allBillsWithItems.collectLatest { history ->
-                    _billHistory.value = history
+                billHistory.collectLatest {
                     _isInitialLoading.value = false
-                }
-            }
-            
-            launch {
-                repository.allSavedContacts.collectLatest { contacts ->
-                    _savedContacts.value = contacts
                 }
             }
 
@@ -121,6 +120,71 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
         _persons.clear()
         _itemAssignments.clear()
         _splitResults.value = emptyList()
+    }
+
+    fun loadBill(billId: Long) {
+        viewModelScope.launch {
+            _isProcessing.value = true
+            try {
+                val billWithItems = withContext(Dispatchers.IO) {
+                    repository.getBillWithItems(billId)
+                }
+                billWithItems?.let {
+                    _currentBill.value = it.bill
+                    _billItems.clear()
+                    _billItems.addAll(it.items)
+
+                    val personsFromDb = withContext(Dispatchers.IO) {
+                        repository.getPersonsForBill(billId)
+                    }
+                    _persons.clear()
+                    _persons.addAll(personsFromDb)
+
+                    _itemAssignments.clear()
+                    withContext(Dispatchers.IO) {
+                        personsFromDb.forEach { person ->
+                            _itemAssignments.addAll(repository.getAssignmentsForPerson(person.id))
+                        }
+                    }
+
+                    calculateSplit()
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "Failed to load: ${e.message}"
+            } finally {
+                _isProcessing.value = false
+            }
+        }
+    }
+
+    fun deleteBill(bill: Bill) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.deleteBill(bill)
+        }
+    }
+
+    suspend fun saveBill(): Long {
+        return withContext(Dispatchers.IO) {
+            recalculateTotals()
+            val bill = _currentBill.value ?: Bill()
+            val billId = repository.insertBill(bill)
+
+            val itemMap = mutableMapOf<Long, Long>()
+            val itemsToInsert = _billItems.map { it.copy(id = 0, billId = billId) }
+            val insertedItemIds = repository.insertItems(itemsToInsert)
+            _billItems.forEachIndexed { index, item -> itemMap[item.id] = insertedItemIds[index] }
+
+            val personMap = mutableMapOf<Long, Long>()
+            val insertedPersonIds = _persons.map { repository.insertPerson(it.copy(id = 0, billId = billId)) }
+            _persons.forEachIndexed { index, person -> personMap[person.id] = insertedPersonIds[index] }
+
+            val assignmentsToInsert = _itemAssignments.map {
+                it.copy(id = 0, itemId = itemMap[it.itemId]!!, personId = personMap[it.personId]!!)
+            }
+            repository.insertAssignments(assignmentsToInsert)
+
+            billId
+        }
     }
 
     fun addItem(name: String, price: Double, quantity: Int = 1) {
