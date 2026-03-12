@@ -230,7 +230,6 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
             )
         }
         
-        // Sync the amountOwed back to the persons list for the UI
         _splitResults.value.forEach { result ->
             val index = _persons.indexOfFirst { it.id == result.person.id }
             if (index != -1) {
@@ -257,6 +256,24 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
         return _splitResults.value.find { it.person.id == personId }?.total ?: 0.0
     }
 
+    fun getConvertedGrandTotal(): Double {
+        val total = _currentBill.value?.total ?: 0.0
+        return convert(total, "USD", _selectedCurrency.value.code)
+    }
+
+    fun togglePersonPaid(personId: Long, isPaid: Boolean) {
+        val index = _persons.indexOfFirst { it.id == personId }
+        if (index != -1) {
+            _persons[index] = _persons[index].copy(isPaid = isPaid)
+            if (personId > 0) {
+                viewModelScope.launch(Dispatchers.IO) {
+                    repository.markPersonAsPaid(personId, isPaid)
+                }
+            }
+            calculateSplit()
+        }
+    }
+
     fun processReceipt(uri: Uri) {
         viewModelScope.launch {
             _isProcessing.value = true
@@ -276,7 +293,6 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
                     subtotal = result.subtotal ?: result.items.sumOf { it.price * it.quantity },
                     total = result.total ?: 0.0
                 )
-                // If subtotal is provided, we should set it and calculate percentages
                 calculateSplit()
             } catch (e: Exception) {
                 _errorMessage.value = "Failed to process receipt: ${e.message}"
