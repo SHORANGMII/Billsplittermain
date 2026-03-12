@@ -27,9 +27,18 @@ import kotlinx.coroutines.withContext
 
 /**
  * ViewModel for managing bill splitting logic and state.
- * Supports OCR scanning, multi-currency conversion, split calculation, and offline persistence.
+ * 
+ * Features:
+ * - OCR scanning for automated line item entry
+ * - Multi-currency support with real-time conversion
+ * - Proportional tax and tip distribution
+ * - Persistent saved contacts for recurring split participants
+ * - Settled status (isPaid) tracking for each person
+ * - Full offline operation with Room database persistence
  */
 class BillViewModel(application: Application) : AndroidViewModel(application) {
+
+    // ==================== REPOSITORY & PROCESSORS ====================
 
     private val repository: BillRepository by lazy {
         (application as BillSplitterApplication).repository
@@ -39,34 +48,36 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
         ReceiptOcrProcessor(application)
     }
 
-    private val _currentBill = mutableStateOf<Bill?>(null)
+    // ==================== STATE FIELDS ====================
+
+    private val _currentBill = mutableStateOf<Bill?>(null) // The active bill being edited
     val currentBill: State<Bill?> = _currentBill
 
-    private val _billItems = mutableStateListOf<BillItem>()
+    private val _billItems = mutableStateListOf<BillItem>() // List of items added to the current bill
     val billItems: List<BillItem> = _billItems
 
-    private val _persons = mutableStateListOf<Person>()
+    private val _persons = mutableStateListOf<Person>() // List of participants in the split
     val persons: List<Person> = _persons
 
-    private val _isProcessing = mutableStateOf(false)
+    private val _isProcessing = mutableStateOf(false) // Tracks whether a background operation (OCR/Save) is active
     val isProcessing: State<Boolean> = _isProcessing
 
-    private val _errorMessage = mutableStateOf<String?>(null)
+    private val _errorMessage = mutableStateOf<String?>(null) // Holds error messages for display in the UI
     val errorMessage: State<String?> = _errorMessage
 
-    private val _splitResults = mutableStateOf<List<SplitResult>>(emptyList())
+    private val _splitResults = mutableStateOf<List<SplitResult>>(emptyList()) // Final calculated split breakdown
     val splitResults: State<List<SplitResult>> = _splitResults
 
-    private val _selectedCurrency = mutableStateOf(supportedCurrencies.first())
+    private val _selectedCurrency = mutableStateOf(supportedCurrencies.first()) // Active currency for formatting/conversion
     val selectedCurrency: State<CurrencyInfo> = _selectedCurrency
 
-    private val _isForcedOffline = mutableStateOf(false)
+    private val _isForcedOffline = mutableStateOf(false) // User-controlled offline mode toggle
     val isForcedOffline: State<Boolean> = _isForcedOffline
 
-    private val _isInitialLoading = MutableStateFlow(true)
+    private val _isInitialLoading = MutableStateFlow(true) // Initial database loading state
     val isInitialLoading: StateFlow<Boolean> = _isInitialLoading.asStateFlow()
 
-    private val _itemAssignments = mutableStateListOf<ItemAssignment>()
+    private val _itemAssignments = mutableStateListOf<ItemAssignment>() // Map of item-to-person assignments
     val itemAssignments: List<ItemAssignment> = _itemAssignments
 
     val billHistory: StateFlow<List<BillWithItems>> = repository.allBillsWithItems
@@ -77,6 +88,9 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
 
     private var isInitialized = false
 
+    // ==================== LIFECYCLE & CONFIGURATION ====================
+
+    /** Initializes state from persistence on first UI entry. */
     fun onUiReady() {
         if (isInitialized) return
         isInitialized = true
@@ -97,6 +111,7 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Toggles the application's network awareness mode and persists to prefs. */
     fun toggleForcedOffline() {
         val newValue = !_isForcedOffline.value
         _isForcedOffline.value = newValue
@@ -106,14 +121,19 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Updates the active currency for UI display and calculations. */
     fun setSelectedCurrency(currency: CurrencyInfo) {
         _selectedCurrency.value = currency
     }
 
+    /** Clears the current active error message. */
     fun clearErrorMessage() {
         _errorMessage.value = null
     }
 
+    // ==================== BILL MANAGEMENT ====================
+
+    /** Resets all ephemeral state to start a new bill entry. */
     fun createNewBill(name: String = "") {
         _currentBill.value = Bill(name = name)
         _billItems.clear()
@@ -122,6 +142,7 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
         _splitResults.value = emptyList()
     }
 
+    /** Loads an existing bill and all related data from the repository. */
     fun loadBill(billId: Long) {
         viewModelScope.launch {
             _isProcessing.value = true
@@ -157,12 +178,14 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Deletes a bill from persistent storage. */
     fun deleteBill(bill: Bill) {
         viewModelScope.launch(Dispatchers.IO) {
             repository.deleteBill(bill)
         }
     }
 
+    /** Persists the current bill, its items, participants, and assignments to Room. */
     suspend fun saveBill(): Long {
         return withContext(Dispatchers.IO) {
             recalculateTotals()
@@ -187,28 +210,33 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Adds a new line item to the current bill. */
     fun addItem(name: String, price: Double, quantity: Int = 1) {
         val tempId = System.nanoTime()
         _billItems.add(BillItem(id = tempId, billId = 0, name = name, price = price, quantity = quantity, totalPrice = price * quantity))
         recalculateTotals()
     }
 
+    /** Removes a line item and its associated assignments. */
     fun removeItem(itemId: Long) {
         _billItems.removeAll { it.id == itemId }
         _itemAssignments.removeAll { it.itemId == itemId }
         recalculateTotals()
     }
 
+    /** Updates the tax percentage and triggers a total recalculation. */
     fun updateTaxPercentage(percent: Double) {
         _currentBill.value = _currentBill.value?.copy(taxPercentage = percent)
         recalculateTotals()
     }
 
+    /** Updates the tip percentage and triggers a total recalculation. */
     fun updateTipPercentage(percent: Double) {
         _currentBill.value = _currentBill.value?.copy(tipPercentage = percent)
         recalculateTotals()
     }
 
+    /** Recalculates subtotal, tax, and tip amounts for the active bill. */
     private fun recalculateTotals() {
         val subtotal = _billItems.sumOf { it.totalPrice }
         val tax = subtotal * ((_currentBill.value?.taxPercentage ?: 0.0) / 100.0)
@@ -222,6 +250,9 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
         calculateSplit()
     }
 
+    // ==================== PERSON MANAGEMENT ====================
+
+    /** Adds a new participant. If linked to a contactId, increments its usage frequency. */
     fun addPerson(name: String, contactId: Long? = null) {
         val person = Person(
             id = System.nanoTime(),
@@ -237,6 +268,7 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Toggles the assignment of an item to a specific person. */
     fun toggleItemAssignment(itemId: Long, personId: Long) {
         val existing = _itemAssignments.find { it.itemId == itemId && it.personId == personId }
         if (existing != null) {
@@ -247,6 +279,7 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
         calculateSplit()
     }
 
+    /** Assigns every current item to every current participant equally. */
     fun splitEqually() {
         if (_persons.isEmpty()) return
         _itemAssignments.clear()
@@ -258,6 +291,7 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
         calculateSplit()
     }
 
+    /** Recalculates the per-person total based on item assignments and proportional tax/tip shares. */
     fun calculateSplit() {
         val bill = _currentBill.value ?: return
         val subtotal = bill.subtotal
@@ -302,29 +336,35 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Returns all items currently assigned to a participant. */
     fun getItemsForPerson(personId: Long): List<BillItem> {
         val itemIds = _itemAssignments.filter { it.personId == personId }.map { it.itemId }
         return _billItems.filter { it.id in itemIds }
     }
 
+    /** Returns all participants currently assigned to a line item. */
     fun getAssignedPersonsForItem(itemId: Long): List<Person> {
         val personIds = _itemAssignments.filter { it.itemId == itemId }.map { it.personId }
         return _persons.filter { it.id in personIds }
     }
 
+    /** Checks if a participant is currently assigned to a line item. */
     fun isPersonAssignedToItem(itemId: Long, personId: Long): Boolean {
         return _itemAssignments.any { it.itemId == itemId && it.personId == personId }
     }
 
+    /** Retrieves the current calculated total for a participant. */
     fun getPersonRunningTotal(personId: Long): Double {
         return _splitResults.value.find { it.person.id == personId }?.total ?: 0.0
     }
 
+    /** Calculates the bill total in the currently selected currency. */
     fun getConvertedGrandTotal(): Double {
         val total = _currentBill.value?.total ?: 0.0
         return convert(total, "USD", _selectedCurrency.value.code)
     }
 
+    /** Updates a participant's settled status in both UI and storage. */
     fun togglePersonPaid(personId: Long, isPaid: Boolean) {
         val index = _persons.indexOfFirst { it.id == personId }
         if (index != -1) {
@@ -338,6 +378,9 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // ==================== OCR PROCESSING ====================
+
+    /** Triggers ML Kit OCR on the selected image and populates the bill items from the result. */
     fun processReceipt(uri: Uri) {
         viewModelScope.launch {
             _isProcessing.value = true

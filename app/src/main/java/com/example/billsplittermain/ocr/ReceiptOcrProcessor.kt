@@ -9,12 +9,25 @@ import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import kotlinx.coroutines.tasks.await
 
+/**
+ * Processor for extracting bill information from receipt images using Google ML Kit OCR.
+ * 
+ * Strategy:
+ * 1. Uses ML Kit to recognize text blocks and lines in the image.
+ * 2. Iterates through lines and uses regular expressions to identify items and their prices.
+ *    The regex `(.+?)\s+\$?([\d,]+\.?\d{0,2})` targets a name followed by a decimal price.
+ * 3. Looks for specific keywords (e.g., "tax", "tip", "subtotal") to extract financial totals.
+ * 4. Aggregates all detected items and totals into an [OcrResult].
+ */
 class ReceiptOcrProcessor(private val context: Application) {
 
     private val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
     private val lineRegex = Regex("""(.+?)\s+\$?([\d,]+\.?\d{0,2})""")
 
-    /** Uses ML Kit on-device OCR to recognize text from receipt images. Returns recognized text or empty string on failure. */
+    /**
+     * Uses ML Kit on-device OCR to recognize text from receipt images.
+     * Returns an [OcrResult] containing the parsed data or an empty result on failure.
+     */
     suspend fun processImage(uri: Uri): OcrResult {
         return try {
             val image = InputImage.fromFilePath(context, uri)
@@ -63,6 +76,9 @@ class ReceiptOcrProcessor(private val context: Application) {
         }
     }
 
+    /**
+     * Closes the underlying ML Kit text recognizer to release resources.
+     */
     fun cleanup() {
         recognizer.close()
     }
