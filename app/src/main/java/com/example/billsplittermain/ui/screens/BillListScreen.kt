@@ -56,11 +56,12 @@ fun BillListScreen(
                     .padding(innerPadding)
                     .padding(horizontal = 16.dp)
             ) {
-                items(bills) { bill ->
+                items(bills) { billWithItems ->
                     BillCard(
-                        bill = bill,
+                        bill = billWithItems.bill,
+                        onDelete = { viewModel.deleteBill(billWithItems.bill) },
                         onClick = { 
-                            navController.navigate(Screen.BillDetail(bill.id).createRoute(bill.id))
+                            navController.navigate(Screen.BillDetail(billWithItems.bill.id).createRoute(billWithItems.bill.id))
                         }
                     )
                 }

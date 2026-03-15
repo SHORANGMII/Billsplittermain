@@ -7,10 +7,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -34,6 +36,7 @@ fun HistoryScreen(
 ) {
     val billHistory by viewModel.billHistory.collectAsState()
     val selectedCurrency by viewModel.selectedCurrency
+    var showDeleteAllDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -42,6 +45,17 @@ fun HistoryScreen(
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    if (billHistory.isNotEmpty()) {
+                        IconButton(onClick = { showDeleteAllDialog = true }) {
+                            Icon(
+                                Icons.Default.DeleteForever,
+                                contentDescription = "Delete All Data",
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                        }
                     }
                 }
             )
@@ -67,12 +81,38 @@ fun HistoryScreen(
                         currencyCode = selectedCurrency.code,
                         onDelete = { viewModel.deleteBill(billWithItems.bill) },
                         onClick = {
+                            viewModel.createNewBill()
                             viewModel.loadBill(billWithItems.bill.id)
                             navController.navigate(Screen.Split.route)
                         }
                     )
                 }
             }
+        }
+
+        if (showDeleteAllDialog) {
+            AlertDialog(
+                onDismissRequest = { showDeleteAllDialog = false },
+                title = { Text("Delete All Data") },
+                text = { Text("This will permanently delete all your bills, items, contacts and split history. This cannot be undone.") },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            viewModel.deleteAllData()
+                            showDeleteAllDialog = false
+                            navController.navigate(Screen.Home.route)
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                    ) {
+                        Text("Delete Everything")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDeleteAllDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
         }
     }
 }

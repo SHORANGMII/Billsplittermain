@@ -45,6 +45,7 @@ fun HomeScreen(
     val selectedCurrency by viewModel.selectedCurrency
     
     var showCurrencyMenu by remember { mutableStateOf(false) }
+    var showBillNameDialog by remember { mutableStateOf(false) }
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -126,11 +127,36 @@ fun HomeScreen(
                     selectedCurrency = selectedCurrency,
                     onScanClick = { navController.navigate(Screen.Scan.route) },
                     onManualClick = {
-                        viewModel.createNewBill()
-                        navController.navigate(Screen.Items.route)
+                        showBillNameDialog = true
                     }
                 )
             }
+        }
+
+        if (showBillNameDialog) {
+            var billName by remember { mutableStateOf("") }
+            AlertDialog(
+                onDismissRequest = { showBillNameDialog = false },
+                title = { Text("Name Your Bill") },
+                text = {
+                    TextField(
+                        value = billName,
+                        onValueChange = { billName = it },
+                        placeholder = { Text("e.g. Pizza Night, Coffee Run") },
+                        singleLine = true
+                    )
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        viewModel.createNewBill(billName.trim())
+                        showBillNameDialog = false
+                        navController.navigate(Screen.Items.route)
+                    }) { Text("Start") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showBillNameDialog = false }) { Text("Cancel") }
+                }
+            )
         }
     }
 }

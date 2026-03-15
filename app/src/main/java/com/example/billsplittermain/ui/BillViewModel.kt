@@ -26,15 +26,16 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * ViewModel for managing bill splitting logic and state.
- * 
+ * Central ViewModel for Bill Splitter OCR.
+ *
  * Features:
- * - OCR scanning for automated line item entry
- * - Multi-currency support with real-time conversion
- * - Proportional tax and tip distribution
- * - Persistent saved contacts for recurring split participants
- * - Settled status (isPaid) tracking for each person
- * - Full offline operation with Room database persistence
+ *  1. OCR receipt scanning via Google ML Kit
+ *  2. Multi-currency support (USD, EUR, NPR + 5 more)
+ *  3. Proportional tax and tip split per person
+ *  4. Saved contacts for quick person re-add (User Profiles)
+ *  5. Paid/unpaid tracking per person with green toggle
+ *  6. Offline-first with Room database persistence
+ *  7. Delete all data feature for full data wipe
  */
 class BillViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -79,6 +80,9 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _itemAssignments = mutableStateListOf<ItemAssignment>() // Map of item-to-person assignments
     val itemAssignments: List<ItemAssignment> = _itemAssignments
+
+    private val _scanResult = mutableStateOf<OcrResult?>(null) // Result of the last OCR scan
+    val scanResult: State<OcrResult?> = _scanResult
 
     val billHistory: StateFlow<List<BillWithItems>> = repository.allBillsWithItems
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
@@ -140,6 +144,7 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
         _persons.clear()
         _itemAssignments.clear()
         _splitResults.value = emptyList()
+        _scanResult.value = null
     }
 
     /** Loads an existing bill and all related data from the repository. */
@@ -217,6 +222,20 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
         recalculateTotals()
     }
 
+    /** Updates an existing line item. */
+    fun updateItem(itemId: Long, name: String, price: Double, quantity: Int) {
+        val index = _billItems.indexOfFirst { it.id == itemId }
+        if (index != -1) {
+            _billItems[index] = _billItems[index].copy(
+                name = name,
+                price = price,
+                quantity = quantity,
+                totalPrice = price * quantity
+            )
+            recalculateTotals()
+        }
+    }
+
     /** Removes a line item and its associated assignments. */
     fun removeItem(itemId: Long) {
         _billItems.removeAll { it.id == itemId }
@@ -225,13 +244,13 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /** Updates the tax percentage and triggers a total recalculation. */
-    fun updateTaxPercentage(percent: Double) {
+    fun setTaxPercentage(percent: Double) {
         _currentBill.value = _currentBill.value?.copy(taxPercentage = percent)
         recalculateTotals()
     }
 
     /** Updates the tip percentage and triggers a total recalculation. */
-    fun updateTipPercentage(percent: Double) {
+    fun setTipPercentage(percent: Double) {
         _currentBill.value = _currentBill.value?.copy(tipPercentage = percent)
         recalculateTotals()
     }
@@ -265,7 +284,18 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
             viewModelScope.launch(Dispatchers.IO) {
                 repository.incrementContactUsage(contactId)
             }
+        } else {
+            viewModelScope.launch(Dispatchers.IO) {
+                repository.saveContact(name)
+            }
         }
+    }
+
+    /** Removes a person from the current split and clears their assignments. */
+    fun removePerson(personId: Long) {
+        _persons.removeAll { it.id == personId }
+        _itemAssignments.removeAll { it.personId == personId }
+        calculateSplit()
     }
 
     /** Toggles the assignment of an item to a specific person. */
@@ -381,13 +411,15 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
     // ==================== OCR PROCESSING ====================
 
     /** Triggers ML Kit OCR on the selected image and populates the bill items from the result. */
-    fun processReceipt(uri: Uri) {
+    fun processReceiptImage(uri: Uri) {
         viewModelScope.launch {
             _isProcessing.value = true
             try {
                 val result = withContext(Dispatchers.IO) {
                     ocrProcessor.processImage(uri)
                 }
+
+                _scanResult.value = result
 
                 createNewBill("Receipt ${System.currentTimeMillis()}")
                 result.items.forEach {
@@ -407,6 +439,15 @@ class BillViewModel(application: Application) : AndroidViewModel(application) {
                 _isProcessing.value = false
             }
         }
+    }
+
+    /** Wipes all bills, items, persons, assignments and contacts from the database.
+     *  Called when user chooses to delete all their data. */
+    fun deleteAllData() {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.deleteAllData()
+        }
+        createNewBill()
     }
 
     override fun onCleared() {

@@ -69,6 +69,14 @@ dependencies {
     // ML Kit & Coroutines for Task
     implementation(libs.mlkit.text.recognition)
     implementation(libs.kotlinx.coroutines.play.services)
+
+    // CameraX
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.lifecycle)
+    implementation(libs.androidx.camera.view)
+
+    // Accompanist Permissions
+    implementation(libs.accompanist.permissions)
     
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

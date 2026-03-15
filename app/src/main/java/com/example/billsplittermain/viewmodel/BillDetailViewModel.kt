@@ -1,36 +1,40 @@
 package com.example.billsplittermain.viewmodel
 
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.State
+import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.billsplittermain.data.BillWithPersons
 import com.example.billsplittermain.data.BillRepository
+import com.example.billsplittermain.data.BillWithItems
 import kotlinx.coroutines.launch
 
-/** Manages bill detail view. Calculates total paid/unpaid amounts from persons list. */
+/** 
+ * Manages bill detail view. 
+ * Note: This ViewModel is currently kept for architectural compatibility. 
+ * Most logic has moved to the shared BillViewModel.
+ */
 class BillDetailViewModel(private val repository: BillRepository) : ViewModel() {
 
-    private val _billWithPersons = mutableStateOf<BillWithPersons?>(null)
-    val billWithPersons: State<BillWithPersons?> = _billWithPersons
+    private val _billWithItems = mutableStateOf<BillWithItems?>(null)
+    val billWithItems: State<BillWithItems?> = _billWithItems
 
-    private val _totalPaid = mutableStateOf(0.0)
+    private val _totalPaid = mutableDoubleStateOf(0.0)
     val totalPaid: State<Double> = _totalPaid
 
-    private val _totalUnpaid = mutableStateOf(0.0)
+    private val _totalUnpaid = mutableDoubleStateOf(0.0)
     val totalUnpaid: State<Double> = _totalUnpaid
 
     fun loadBillDetails(billId: Long) {
         viewModelScope.launch {
-            val result = repository.getBillWithPersons(billId)
-            _billWithPersons.value = result
-            calculateTotals()
+            val result = repository.getBillWithItems(billId)
+            _billWithItems.value = result
+            
+            result?.let {
+                _totalPaid.doubleValue = it.items.sumOf { item -> item.totalPrice }
+                _totalUnpaid.doubleValue = 0.0
+            }
         }
-    }
-
-    private fun calculateTotals() {
-        val persons = _billWithPersons.value?.persons ?: emptyList()
-        _totalPaid.value = persons.filter { it.isPaid }.sumOf { it.amountOwed }
-        _totalUnpaid.value = persons.filter { !it.isPaid }.sumOf { it.amountOwed }
     }
 }
